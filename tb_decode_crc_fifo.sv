@@ -25,7 +25,7 @@ module tb_decode_crc_fifo;
    logic      out_valid;
    logic      out_ready;
 
-   decode_fifo u_decode (
+   mem_register u_decode (
       .clk       (clk),
       .rst_n     (rst_n),
       .in_data   (in_data),
@@ -33,7 +33,7 @@ module tb_decode_crc_fifo;
       .in_ready  (in_ready),
       .out_data  (decode_data),
       .out_valid (decode_valid),
-      .out_ready(decode_ready)
+      .out_ready (decode_ready)
    );
 
    crc_fifo u_crc (

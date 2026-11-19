@@ -1,23 +1,29 @@
 `timescale 1ns / 1ps
 
-module cdc_fifo_top(
-    input  logic                              wr_clk,
-    input  logic                              wr_rst_n,
-    input  logic                              rd_clk,
-    input  logic                              rd_rst_n,
+ module cdc_fifo_top#(
+    parameter int FIFO_DEPTH = 8
+)(
+    input  logic                              wr_clk    ,
+    input  logic                              wr_rst_n  ,
+    input  logic                              rd_clk    ,
+    input  logic                              rd_rst_n  ,
 
-    input  pixel_pkg::payload_sb_t in_data,
-    input  logic                              in_valid,
-    output logic                              full,
+    input  pixel_pkg::payload_sb_t            in_data   ,
+    input  logic                              in_valid  ,
+    output logic                              full      ,
 
-    output pixel_pkg::payload_sb_t out_data,
-    output logic                              out_valid,
-    input  logic                              out_ready,
+    output pixel_pkg::payload_sb_t            out_data  ,
+    output logic                              out_valid ,
+    input  logic                              out_ready ,
     output logic                              empty
 );
-   localparam int ADDR_W = 3;
-   localparam int PTR_W  = ADDR_W + 1; // wrap bit + address bits
-
+   // SELECT FIFO_DEPTH >= 4
+   // DEFAULT ADDR_W = 4 FOR FIFO_DEPTH = 8
+    localparam int ADDR_W = (FIFO_DEPTH > 1) ?
+                            $clog2(FIFO_DEPTH) : 1;
+                            
+    localparam int PTR_W  = ADDR_W + 1;
+    
    // wr_bin is fifo wr_addr, 
    // wr_gray sent to rd clock domain to know if empty -> read control
    logic [PTR_W-1:0] wr_bin, wr_gray;
@@ -31,43 +37,48 @@ module cdc_fifo_top(
    logic [PTR_W-1:0] wr_gray_rsync;
 
    logic wr_push, rd_pop;
-   //--------------------------------------
-   // Full and Empty control signal
-   //--------------------------------------
-   // gray pointer full when 2 msb unequal, rest lsb equal
+//--------------------------------------
+// Full and Empty control signal
+//--------------------------------------
+   // gray pointer full for wr_push
    assign full  = (wr_gray == {
        ~rd_gray_wsync[PTR_W-1:PTR_W-2],
         rd_gray_wsync[PTR_W-3:0]
    });
    
+   // gray pointer empty for rd_pop
    assign empty = (rd_gray == wr_gray_rsync);
    
-   //--------------------------------------
-   // write input control signal
-   //--------------------------------------
+//--------------------------------------
+// write input control signal
+//--------------------------------------
    assign wr_push = in_valid & !full;
 
-   //--------------------------------------
-   // read output control signal
-   //--------------------------------------
+//--------------------------------------
+// read output control signal
+//--------------------------------------
    assign rd_pop = !empty & out_ready;
 
-   //--------------------------------------
-   // WRITE FIFO DEPTH = 8
-   //--------------------------------------
-   cdc_fifo_mem8 mem (
+//--------------------------------------
+// WRITE FIFO wth parameterized depth
+//--------------------------------------
+   cdc_fifo_mem #(
+        .FIFO_DEPTH (FIFO_DEPTH),
+        .ADDR_W     (ADDR_W)
+    ) mem (
        .wr_clk   (wr_clk),
        .wr_push  (wr_push),
        .wr_addr  (wr_bin[ADDR_W-1:0]),
        .wr_data  (in_data),
-       .rd_clk   (rd_clk),
+       
        .rd_pop   (rd_pop),
        .rd_addr  (rd_bin[ADDR_W-1:0]),
        .rd_data  (out_data)
    );
-   //--------------------------------------
-   // WRITE Pointer B2G, update when valid
-   //--------------------------------------
+   
+//--------------------------------------
+// WRITE Pointer B2G, update when valid
+//--------------------------------------
    cdc_fifo #(.PTR_W(PTR_W)) wr_ptr_ctrl (
        .clk      (wr_clk),
        .rst_n    (wr_rst_n),
@@ -76,9 +87,9 @@ module cdc_fifo_top(
        .gray_ptr (wr_gray)
    );
    
-   //--------------------------------------
-   // WRITE Gray Pointer, send to Read domain
-   //--------------------------------------
+//--------------------------------------
+// WRITE Gray Pointer, send to Read domain
+//--------------------------------------
    cdc_gray_sync2 #(.WIDTH(PTR_W)) wrgray_to_rd (
        .dst_clk    (rd_clk),
        .dst_rst_n  (rd_rst_n),
@@ -86,9 +97,9 @@ module cdc_fifo_top(
        .gray_sync  (wr_gray_rsync)
    );
    
-   //--------------------------------------
-   // Read Pointer B2G when Not Empty
-   //--------------------------------------
+//--------------------------------------
+// Read Pointer B2G update when rd_pop
+//--------------------------------------
    cdc_fifo #(.PTR_W(PTR_W)) rd_ptr_ctrl (
        .clk      (rd_clk),
        .rst_n    (rd_rst_n),
@@ -97,9 +108,9 @@ module cdc_fifo_top(
        .gray_ptr (rd_gray)
    );
    
-   //--------------------------------------
-   // Read gray pointer to the Write domain
-   //--------------------------------------
+//--------------------------------------
+// Read gray pointer to the Write domain
+//--------------------------------------
    cdc_gray_sync2 #(.WIDTH(PTR_W)) rdgray_to_wr (
        .dst_clk    (wr_clk),
        .dst_rst_n  (wr_rst_n),
@@ -162,24 +173,28 @@ module cdc_gray_sync2 #(
     assign gray_sync = sync_ff2;
 endmodule
 
-module cdc_fifo_mem8 (
-    input  logic                              wr_clk,
-    input  logic                              wr_push,
-    input  logic [2:0]                        wr_addr,
+module cdc_fifo_mem #(
+    parameter int FIFO_DEPTH = 8,
+    parameter int ADDR_W     = 3
+)(
+    input  logic                   wr_clk,
+    input  logic                   wr_push,
+    input  logic [ADDR_W-1:0]      wr_addr,
     input  pixel_pkg::payload_sb_t wr_data,
 
-    input  logic                              rd_clk,
-    input  logic                              rd_pop,
-    input  logic [2:0]                        rd_addr,
+    input  logic                   rd_pop,
+    input  logic [ADDR_W-1:0]      rd_addr,
     output pixel_pkg::payload_sb_t rd_data
 );
-    pixel_pkg::payload_sb_t mem [0:7];
+    pixel_pkg::payload_sb_t mem [0:FIFO_DEPTH-1];
 
-    always_ff @(posedge wr_clk) begin
-       if (wr_push) // wr_push = in_valid & !full;
-          mem[wr_addr] <= wr_data;
-    end
+   // Synchronous Write
+   always_ff @(posedge wr_clk) begin
+      if (wr_push) // wr_push = in_valid & !full;
+         mem[wr_addr] <= wr_data;
+   end
 
-    assign rd_data = (rd_pop)? mem[rd_addr]: '0;
+   // Combinational Read
+   assign rd_data = (rd_pop)? mem[rd_addr]: '0;
     
 endmodule

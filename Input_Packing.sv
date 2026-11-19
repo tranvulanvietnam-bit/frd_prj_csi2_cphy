@@ -11,11 +11,11 @@ module Input_Packing (
    output logic                                 out_valid
 );
 
-   logic                    is_raw20, en_pixel_store, is_mono;
-   logic                    count;  // 0: waiting for first MONO pixel; 1: second MONO pixel
-   logic                    is_valid_tx_px;
-   logic [19:0]             pixel_store;
-   logic [39:0]             packed_pixel ;
+   logic        is_raw20, en_pixel_store, is_mono;
+   logic        count;  // 0: waiting for first MONO pixel; 1: second MONO pixel
+   logic        is_valid_tx_px;
+   logic [19:0] pixel_store;
+   logic [39:0] packed_pixel ;
 
    assign is_mono        = in_data.pixel_mode; //1:MONO, 0: DUAL
    
@@ -41,7 +41,6 @@ module Input_Packing (
                pixel_store <= in_data.pixel[19:0];
             end
             count <= ~count;
-            $write("%t count = %0d", $time, count);
          end
       end
    end
@@ -63,19 +62,25 @@ module Input_Packing (
    
    assign out_valid = is_valid_tx_px;
    // -------------------------------------------
-   // Output Data Select decide by MODE
+   // Output Data select decide by MODE and datatype
    // -------------------------------------------
    always_comb begin
       packed_pixel = '0;
-      if (!en_pixel_store) begin
+      if (!en_pixel_store) begin // not (RAW20 and MONO)
          packed_pixel = in_data.pixel;
       end
-      else if (count) begin
-         packed_pixel = 128'({in_data.pixel[19:0], pixel_store});
+      else if (in_vid_en & en_pixel_store & count) begin // reduce to if (count)
+         packed_pixel = 40'({in_data.pixel[19:0], pixel_store[19:0]});
       end
    end
- 
-   assign out_data.pixel = packed_pixel ; 
+   
+   assign out_data.pixel = (is_raw20) ? 
+      40'({packed_pixel[11:10], packed_pixel[1:0], packed_pixel[31:30], packed_pixel[21:20], 
+           packed_pixel[29:22], 
+           packed_pixel[39:32], 
+           packed_pixel[9:2]  , 
+           packed_pixel[19:12]}) : 
+      packed_pixel; 
    // -------------------------------------------
    // Bybass metadata
    // -------------------------------------------  

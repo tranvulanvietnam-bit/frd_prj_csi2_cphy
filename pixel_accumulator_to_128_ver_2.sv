@@ -6,6 +6,7 @@ module pxl_accumulator_128bits (
   
    input  pixel_pkg::video_interface_t       in_data,
    input  logic                              in_valid,
+   
    input  logic                              in_vid_en,
    input  logic                              posedge_vsync,
 
@@ -13,15 +14,10 @@ module pxl_accumulator_128bits (
    output logic                              out_valid
 );
 
-   import pixel_pkg::DATATYPE_IS_RAW20;
-   import pixel_pkg::vc;
-
+   import pixel_pkg::*;
+   
    localparam int         ACCU_W       = 120;
-   localparam logic [1:0] ID_LPKT_BODY = 2'b00;
-   localparam logic [1:0] ID_LPKT_HDR  = 2'b01;
-   localparam logic [1:0] ID_SPKT      = 2'b10;
-   localparam logic [1:0] ID_LPKT_LAST = 2'b11;
- 
+  
    logic [39:0]            in_pixel;
    logic [127:0]           out_pixel;
 
